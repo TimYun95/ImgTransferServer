@@ -57,11 +57,13 @@
     <Reference Include="Emgu.CV.World">
       <HintPath>..\packages\EmguCV.3.1.0.1\lib\net30\Emgu.CV.World.dll</HintPath>
     </Reference>
-    <Reference Include="log4net">
-      <HintPath>..\..\..\..\URLastPrj\AssistantRobot_Dlls\AssistantRobotDlls\LogAgent\bin\x64\Release\log4net.dll</HintPath>
+    <Reference Include="log4net, Version=2.0.8.0, Culture=neutral, processorArchitecture=AMD64">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\ResourceDll\log4net.dll</HintPath>
     </Reference>
-    <Reference Include="LogAgent">
-      <HintPath>..\..\..\..\URLastPrj\AssistantRobot_Dlls\AssistantRobotDlls\LogAgent\bin\x64\Release\LogAgent.dll</HintPath>
+    <Reference Include="LogAgent, Version=1.0.0.0, Culture=neutral, processorArchitecture=AMD64">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\ResourceDll\LogAgent.dll</HintPath>
     </Reference>
     <Reference Include="OpenTK">
       <HintPath>..\packages\OpenTK.1.1.2225.0\lib\net20\OpenTK.dll</HintPath>
