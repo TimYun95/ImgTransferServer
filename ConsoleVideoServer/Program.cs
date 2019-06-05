@@ -47,8 +47,8 @@ namespace ConsoleVideoServer
 
         const int clientPortTCPAtDiffPC = 40005;
         const int clientPortUDPAtDiffPC = 40006;
-        const string serverIPAtDiffPC = "192.168.1.117"; // 应该是192.168.1.11 此处为测试PC
-       
+        const string serverIPAtDiffPC = "192.168.1.13"; // 应该是192.168.1.13
+
         const int serverPortTCPAny = 40005;
         const int serverPortUDPAny = 40006;
 
@@ -56,13 +56,13 @@ namespace ConsoleVideoServer
 
         static Socket tcpTransferSocket;
         static bool ifGetVideoSendCmdOnce = false;
-        const int tcpTransferSocketRecieveTimeOut = 2 * 1000;
-        static System.Timers.Timer tcpBeatClocker = new System.Timers.Timer(tcpTransferSocketRecieveTimeOut);
+        const int tcpTransferSocketRecieveTimeOut = 3 * 1000;
+        static System.Timers.Timer tcpBeatClocker = new System.Timers.Timer(tcpTransferSocketRecieveTimeOut / 2);
         static CancellationTokenSource tcpTransferCancel;
         static Task tcpTransferRecieveTask;
         static IPEndPoint remoteIPEndPoint;
-        static byte remoteDeviceIndex;
-        static string remoteDevicePublicKey;
+        static byte? remoteDeviceIndex = null;
+        static string remoteDevicePublicKey = null;
         const int remoteDevicePublicKeyLength = 1024;
 
         static Socket udpTransferSocket;
@@ -138,6 +138,10 @@ namespace ConsoleVideoServer
                 FinishAllConnection();
                 if (ifGetVideoSendCmdOnce) camera.Dispose();
                 Thread.Sleep(1000);
+
+                // 清空公钥和设备号
+                remoteDeviceIndex = null;
+                remoteDevicePublicKey = null;
                 ifGetVideoSendCmdOnce = false;
             }
 
@@ -176,7 +180,7 @@ namespace ConsoleVideoServer
                 {
                     if (ex.SocketErrorCode == SocketError.ConnectionReset || ex.SocketErrorCode == SocketError.TimedOut)
                     {
-                        EndAllLoop(); 
+                        EndAllLoop();
                         Logger.HistoryPrinting(Logger.Level.INFO, MethodBase.GetCurrentMethod().DeclaringType.FullName, "Console video server tcp transfer recieve no datas in definite time.");
                     }
                     else
@@ -196,10 +200,9 @@ namespace ConsoleVideoServer
         /// <param name="datas">所收数据</param>
         static void DealWithTcpTransferRecieveDatas(byte[] datas)
         {
-            if (datas[0] != (byte)VideoTransferProtocolKey.Header1 || datas[1] != (byte)VideoTransferProtocolKey.Header2)
-            {
-                return;
-            }
+            if (datas.Length < 4) return; // 长度不可能出现
+            if (datas[0] != (byte)VideoTransferProtocolKey.Header1 ||
+                datas[1] != (byte)VideoTransferProtocolKey.Header2) return; // 协议头不匹配
 
             byte deviceIndex = datas[2];
             VideoTransferProtocolKey workCmd = (VideoTransferProtocolKey)datas[3];
@@ -207,12 +210,12 @@ namespace ConsoleVideoServer
             switch (workCmd)
             {
                 case VideoTransferProtocolKey.RSAKey:
-                    remoteDeviceIndex = deviceIndex;
-
-                    // 若收到的Key长度出错 准备关闭连接
                     int keyLength = Convert.ToInt32(
-                              IPAddress.NetworkToHostOrder(
-                              BitConverter.ToInt32(datas, 4)));
+                                              IPAddress.NetworkToHostOrder(
+                                              BitConverter.ToInt32(datas, 4)));
+                    if (keyLength != datas.Length - 8) return; // 长度不匹配
+
+                    remoteDeviceIndex = deviceIndex;
                     remoteDevicePublicKey = Encoding.UTF8.GetString(datas, 8, keyLength);
 
                     Logger.HistoryPrinting(Logger.Level.INFO, MethodBase.GetCurrentMethod().DeclaringType.FullName, "RSAKey saved.");
@@ -230,6 +233,7 @@ namespace ConsoleVideoServer
                     }
                     break;
                 case VideoTransferProtocolKey.PingSignal:
+                    if (remoteDeviceIndex != deviceIndex) return; // 设备号不匹配
                     tcpBeatClocker.Stop();
                     tcpBeatClocker.Start();
                     break;
@@ -278,7 +282,7 @@ namespace ConsoleVideoServer
         {
             if (ifGetCameraSend) return;
             ifGetCameraSend = true;
-            
+
             // 得到图像
             Mat pic = new Mat();
             camera.Retrieve(pic, 0);
@@ -293,6 +297,7 @@ namespace ConsoleVideoServer
             }
 
             // 利用公钥加密
+            if (remoteDevicePublicKey.Equals(null)) return; // 无公钥直接退出
             int byteLength = imgBytes.Length;
             int unitLength = remoteDevicePublicKeyLength / 8 - 11;
             int intgePart = byteLength / unitLength;
@@ -317,12 +322,12 @@ namespace ConsoleVideoServer
             ifGetCameraSend = false;
         }
 
+        // 格式 = Header1 + Header2 + DeviceIndex + FunctionCode + DataLength + PackIndex + PackCount + PackNum + PackData
+        //             协议头1      协议头2          设备号              功能码             数据长度          包索引           分包数           当前包        包内容
+        // 字节 =       1                1                   1                      1                      4                    1                   1                   1           <= maxVideoByteLength    
+        //                                                                                                   数据长度 = 包索引 +  分包数 + 当前包 + 包内容 <= maxVideoByteLength + 3
         /// <summary>
         /// 发送视频块
-        /// 格式 = Header1 + Header2 + DeviceIndex + FunctionCode + DataLength + PackIndex + PackCount + PackNum + PackData
-        ///             协议头1      协议头2          设备号              功能码             数据长度          包索引           分包数           当前包        包内容
-        /// 字节 =       1                1                   1                      1                      4                    1                   1                   1           <= maxVideoByteLength    
-        ///                                                                                                   数据长度 = 包索引 +  分包数 + 当前包 + 包内容 <= maxVideoByteLength + 3
         /// </summary>
         /// <param name="sendBytes">发送的字节</param>
         static void SendVideoPart(List<byte> sendBytesList)
@@ -336,7 +341,7 @@ namespace ConsoleVideoServer
                 List<byte> sendPack = new List<byte>(maxVideoByteLength + 11);
                 sendPack.Add((byte)VideoTransferProtocolKey.Header1);
                 sendPack.Add((byte)VideoTransferProtocolKey.Header2);
-                sendPack.Add(remoteDeviceIndex);
+                sendPack.Add(remoteDeviceIndex.HasValue ? remoteDeviceIndex.Value : byte.MinValue);
                 sendPack.Add((byte)VideoTransferProtocolKey.VideoTransfer);
                 sendPack.AddRange(BitConverter.GetBytes(IPAddress.HostToNetworkOrder(packDataLength + 3)));
                 sendPack.Add(packIndex);
@@ -367,7 +372,7 @@ namespace ConsoleVideoServer
             List<byte> sendFinalPack = new List<byte>(packDataLength - (packCount - 1) * maxVideoByteLength + 11);
             sendFinalPack.Add((byte)VideoTransferProtocolKey.Header1);
             sendFinalPack.Add((byte)VideoTransferProtocolKey.Header2);
-            sendFinalPack.Add(remoteDeviceIndex);
+            sendFinalPack.Add(remoteDeviceIndex.HasValue ? remoteDeviceIndex.Value : byte.MinValue);
             sendFinalPack.Add((byte)VideoTransferProtocolKey.VideoTransfer);
             sendFinalPack.AddRange(BitConverter.GetBytes(IPAddress.HostToNetworkOrder(packDataLength + 3)));
             sendFinalPack.Add(packIndex);
