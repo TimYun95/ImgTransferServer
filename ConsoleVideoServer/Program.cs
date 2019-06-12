@@ -39,7 +39,7 @@ namespace ConsoleVideoServer
         #region 静态字段
         static bool ifLoopContinue = true;
 
-        const bool ifAtSamePC = false;
+        const bool ifAtSamePC = true;
 
         const int clientPortTCPAtSamePC = 40007;
         const int clientPortUDPAtSamePC = 40008;
@@ -173,8 +173,8 @@ namespace ConsoleVideoServer
                 try
                 {
                     byte[] reciveDatas = new byte[1024 + 8];
-                    tcpTransferSocket.Receive(reciveDatas);
-                    DealWithTcpTransferRecieveDatas(reciveDatas);
+                    int actualLength = tcpTransferSocket.Receive(reciveDatas);
+                    DealWithTcpTransferRecieveDatas(reciveDatas.Take(actualLength).ToArray());
                 }
                 catch (SocketException ex)
                 {
