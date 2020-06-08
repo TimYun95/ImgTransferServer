@@ -14,7 +14,7 @@ namespace ConsoleVideoServer
     {
 
         #region 字段
-        private const string logPath = "Log\\";
+        private static readonly string logPath = "Log\\";
         private const string logHistoryPath = "Log\\History\\";
         private const string logConfFilePath = "Log\\Log.config";
         #endregion
@@ -23,7 +23,11 @@ namespace ConsoleVideoServer
         /// <summary>
         /// 私有构造函数
         /// </summary>
-        static Functions() { }
+        static Functions()
+        {
+            logPath = AppDomain.CurrentDomain.BaseDirectory + logPath;
+
+        }
 
         /// <summary>
         /// 检查环境是否符合要求
@@ -31,7 +35,7 @@ namespace ConsoleVideoServer
         public static bool CheckEnvironment()
         {
             if (!CheckLogDirectory()) return false;
-            
+
 
             return true;
         }
